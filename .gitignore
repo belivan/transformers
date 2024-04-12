@@ -3,3 +3,5 @@ transformer_captioning/plots
 __pycache__
 vit_classification/data
 vit_classification/checkpoints
+latex_template
+**.png
