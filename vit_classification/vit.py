@@ -54,15 +54,15 @@ class ViT(nn.Module):
         self.num_classes = num_classes
         self.device = device
 
-        self.patch_embedding = None # TODO (Linear Layer that takes as input a patch and outputs a d_model dimensional vector)
-        self.positional_encoding = None # TODO (use the positional encoding from the transformer captioning solution)
-        self.fc = None # TODO (takes as input the embedding corresponding to the [CLS] token and outputs the logits for each class)
-        self.cls_token = None # TODO (learnable [CLS] token embedding)
+        self.patch_embedding = nn.Linear(patch_dim, d_model)  # TODO (Linear Layer that takes as input a patch and outputs a d_model dimensional vector)
+        self.positional_encoding = PositionalEncoding(d_model, max_len=num_patches + 1)  # TODO (use the positional encoding from the transformer captioning solution)
+        self.fc = nn.Linear(d_model, num_classes)  # TODO (takes as input the embedding corresponding to the [CLS] token and outputs the logits for each class)
+        self.cls_token = nn.Parameter(torch.randn(1, 1, d_model))  # TODO (learnable [CLS] token embedding)
 
         self.layers = nn.ModuleList([EncoderLayer(d_model, num_heads, d_ff) for _ in range(num_layers)])
 
         self.apply(self._init_weights)
-        self.device = device 
+        self.device = device
         self.to(device)
 
     def patchify(self, images):
@@ -76,7 +76,11 @@ class ViT(nn.Module):
 
         # TODO - Break images into a grid of patches
         # Feel free to use pytorch built-in functions to do this
-        
+        images = images.unfold(2, self.patch_dim, self.patch_dim)  # (N, 3, H, W) -> (N, 3, H/patch_dim, W/patch_dim, patch_dim)
+        images = images.unfold(3, self.patch_dim, self.patch_dim)  # (N, 3, H/patch_dim, W/patch_dim, patch_dim) -> (N, 3, H/patch_dim, W/patch_dim, patch_dim, patch_dim)
+        images = images.permute(0, 2, 3, 1, 4, 5).contiguous()  # (N, 3, H/patch_dim, W/patch_dim, patch_dim, patch_dim) -> (N, H/patch_dim, W/patch_dim, 3, patch_dim, patch_dim)
+        images = images.view(images.shape[0], -1, images.shape[3] * images.shape[4] * images.shape[5])  # (N, H/patch_dim, W/patch_dim, 3, patch_dim, patch_dim) -> (N, num_patches, patch_dim*patch_dim*3
+
         return images
 
     def forward(self, images):
