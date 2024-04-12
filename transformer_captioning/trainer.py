@@ -25,7 +25,7 @@ class Trainer(object):
         #Make sure to compute this loss only for indices where label is not the null token.
         #The loss should be averaged over batch and sequence dimensions.
         loss = torch.nn.CrossEntropyLoss(ignore_index=0)(predictions.permute(0, 2, 1), labels)
-        loss = loss.mean()
+        # loss = loss.mean()
         return loss
 
     def val(self):

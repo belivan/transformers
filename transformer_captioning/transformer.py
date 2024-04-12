@@ -41,11 +41,11 @@ class AttentionLayer(nn.Module):
             # Hint : If mask[i,j] = 0, we want softmax(QKT[i,j] + additive_mask[i,j]) to be 0
             # Think about what inputs make softmax 0.
             print(attn_mask.shape)
-            additive_mask = attn_mask.unsqueeze(0).expand(N, -1, -1) * -torch.inf
+            additive_mask = attn_mask.unsqueeze(0).expand(N, -1, -1)
             dot_product += additive_mask
 
         # apply softmax, dropout, and use value
-        y = self.dropout(F.softmax(dot_product, dim=2)) @ value
+        y = self.dropout(F.softmax(dot_product + 1e-10, dim=2)) @ value
         return y
 
 class MultiHeadAttentionLayer(AttentionLayer):
@@ -81,14 +81,57 @@ class MultiHeadAttentionLayer(AttentionLayer):
             # convert att_mask which is multiplicative, to an additive mask
             # Hint : If mask[i,j] = 0, we want softmax(QKT[i,j] + additive_mask[i,j]) to be 0
             # Think about what inputs make softmax 0.
-            additive_mask = attn_mask.unsqueeze(1).unsqueeze(0).expand(N, H, -1, -1) * -torch.inf
+            additive_mask = attn_mask.unsqueeze(0).unsqueeze(0).expand(N, H, -1, -1)
+            additive_mask = additive_mask.to(dot_product.dtype).to(dot_product.device)
             dot_product += additive_mask
 
         # apply softmax, dropout, and use value
-        y = self.dropout(F.softmax(dot_product, dim=3)) @ value
+        y = self.dropout(F.softmax(dot_product + 1e-10, dim=3)) @ value
 
         # concat embeddings from different heads, and project
         output = self.head_proj(y.transpose(1, 2).contiguous().view(N, S, D))
+        return output
+
+        # print("Input shapes and sample values:")
+        # print(f"  Query shape: {query.shape}, Sample: {query[0, 0, :5]}")
+        # print(f"  Key shape: {key.shape}, Sample: {key[0, 0, :5]}")
+        # print(f"  Value shape: {value.shape}, Sample: {value[0, 0, :5]}")
+
+        # # Project query, key, and value
+        # query = self.query_proj(query).view(N, S, H, D // H).transpose(1, 2)
+        # key = self.key_proj(key).view(N, T, H, D // H).transpose(1, 2)
+        # value = self.value_proj(value).view(N, T, H, D // H).transpose(1, 2)
+
+        # print("After projection and reshaping:")
+        # print(f"  Projected Query shape: {query.shape}, Sample: {query[0, 0, 0, :5]}")
+        # print(f"  Projected Key shape: {key.shape}, Sample: {key[0, 0, 0, :5]}")
+        # print(f"  Projected Value shape: {value.shape}, Sample: {value[0, 0, 0, :5]}")
+
+        # # Compute dot-product attention separately for each head
+        # dot_product = torch.matmul(query, key.transpose(2, 3)) / math.sqrt(D // H)
+        # print("Dot-product Shape and sample values:")
+        # print(f"  Shape: {dot_product.shape}, Sample: {dot_product[0, 0, 0, :5]}")
+
+        # if attn_mask is not None:
+        #     print("Original Attention Mask Shape:", attn_mask.shape)
+        #     additive_mask = attn_mask.unsqueeze(0).unsqueeze(0).expand(N, H, -1, -1)
+        #     additive_mask = additive_mask.to(dot_product.dtype).to(dot_product.device)
+        #     print("Additive Mask Shape and sample values:")
+        #     print(f"  Shape: {additive_mask.shape}, Sample: {additive_mask[0, 0, 0, :5]}")
+        #     dot_product += additive_mask
+
+        # # Apply softmax, then dropout, and use the resulting attention scores to weight the values
+        # attn_scores = F.softmax(dot_product + 1e-10, dim=3)
+        # y = self.dropout(attn_scores) @ value
+        # print("Attention Scores and weighted values:")
+        # print(f"  Scores Shape: {attn_scores.shape}, Scores Sample: {attn_scores[0, 0, 0, :5]}")
+        # print(f"  Weighted Value Shape: {y.shape}, Weighted Value Sample: {y[0, 0, 0, :5]}")
+
+        # # Concatenate embeddings from different heads and project back to original dimension
+        # output = self.head_proj(y.transpose(1, 2).contiguous().view(N, S, D))
+        # print("Output Shape and sample values after head projection:")
+        # print(f"  Shape: {output.shape}, Sample: {output[0, 0, :5]}")
+
         return output
 
 
@@ -98,7 +141,7 @@ class PositionalEncoding(nn.Module):
         # TODO - use torch.nn.Embedding to create the encoding. Initialize dropout layer.
         self.encoding = nn.Embedding(max_len, embed_dim)
         self.dropout = nn.Dropout(dropout)
-      
+
     def forward(self, x):
         N, S, D = x.shape
         # TODO - add the encoding to x
@@ -125,6 +168,36 @@ class SelfAttentionBlock(nn.Module):
         x = self.dropout(x)
         out = self.layernorm(seq + x)
         return out
+        # print("Entering SelfAttentionBlock:")
+        # print("  Input seq shape:", seq.shape)
+        # print("  Mask shape:", mask.shape)
+        # print("  Sample input seq (first element):", seq[0, 0, :5])
+
+        # # Apply multi-head self-attention
+        # attn_output = self.self_attn(seq, seq, seq, mask)
+        # print("After MultiHeadAttention:")
+        # print("  Attention output shape:", attn_output.shape)
+        # print("  Sample attention output (first element):", attn_output[0, 0, :5])
+
+        # # Apply dropout to the attention output
+        # attn_output_dropout = self.dropout(attn_output)
+        # print("After Dropout:")
+        # print("  Dropout output shape:", attn_output_dropout.shape)
+        # print("  Sample dropout output (first element):", attn_output_dropout[0, 0, :5])
+
+        # # Add the original input sequence to the attention output to create a residual connection
+        # residual_connection = seq + attn_output_dropout
+        # print("After Adding Residual Connection:")
+        # print("  Residual connection output shape:", residual_connection.shape)
+        # print("  Sample residual output (first element):", residual_connection[0, 0, :5])
+
+        # # Normalize the result using Layer Normalization
+        # normalized_output = self.layernorm(residual_connection)
+        # print("After Layer Normalization:")
+        # print("  Normalized output shape:", normalized_output.shape)
+        # print("  Sample normalized output (first element):", normalized_output[0, 0, :5])
+
+        # return normalized_output
 
 class CrossAttentionBlock(nn.Module):
 
@@ -176,6 +249,29 @@ class DecoderLayer(nn.Module):
         out = self.self_atn_block(seq, mask)
         out = self.cross_atn_block(out, cond)
         return self.feedforward_block(out)
+        # print("Input to DecoderLayer:")
+        # print("  seq shape:", seq.shape)  # Sequence input shape
+        # print("  cond shape:", cond.shape)  # Conditioning input shape
+        # print("  mask shape:", mask.shape)  # Mask shape
+        # print("  Sample seq element:", seq[0, 0, :5])  # Sample from the sequence input
+        # print("  Sample cond element:", cond[0, 0, :5])  # Sample from the conditioning input
+
+        # out = self.self_atn_block(seq, mask)
+        # print("Output after SelfAttentionBlock:")
+        # print("  out shape:", out.shape)  # Output shape after self-attention
+        # print("  Sample out element:", out[0, 0, :5])  # Sample from the output
+
+        # out = self.cross_atn_block(out, cond)
+        # print("Output after CrossAttentionBlock:")
+        # print("  out shape:", out.shape)  # Output shape after cross-attention
+        # print("  Sample out element:", out[0, 0, :5])  # Sample from the output
+
+        # out = self.feedforward_block(out)
+        # print("Output after FeedForwardBlock:")
+        # print("  out shape:", out.shape)  # Output shape after feedforward block
+        # print("  Sample out element:", out[0, 0, :5])  # Sample from the output
+
+        # return out
 
 class TransformerDecoder(nn.Module):
     def __init__(self, word_to_idx, idx_to_word, input_dim, embed_dim, num_heads=4,
@@ -226,9 +322,9 @@ class TransformerDecoder(nn.Module):
         # This mask is multiplicative
         # setting mask[i,j] = 0 means jth element of the sequence is not used 
         # to predict the ith element of the sequence.
-        mask = torch.triu(torch.ones(_len, _len), diagonal=1)
+        mask = torch.triu(torch.ones(_len, _len) * float('-inf'), diagonal=1)
         return mask
-                                      
+
     def forward(self, features, captions):
         """
         Given image features and caption tokens, return a distribution over the
@@ -250,6 +346,30 @@ class TransformerDecoder(nn.Module):
 
         scores = self.score_projection(output)
         return scores
+        # features_embed, captions_embed = self.get_data_embeddings(features, captions)
+        # print("After embedding")
+        # print("Features Embed shape:", features_embed.shape)  # Should be (N, 1, D)
+        # print("Captions Embed shape:", captions_embed.shape)  # Should be (N, T, D)
+        # print("Sample Feature Embed:", features_embed[0, 0, :5])  # Print first 5 dims of the first feature embedding
+        # print("Sample Caption Embed:", captions_embed[0, 0, :5])  # Print first 5 dims of the first caption embedding
+
+        # # Getting causal mask to prevent attention to future timesteps
+        # mask = self.get_causal_mask(captions_embed.shape[1])
+        # mask = mask.to(captions_embed.device)  # Ensuring mask is on the correct device
+        # print("Mask shape:", mask.shape)  # Should be (T, T)
+        # print("Mask sample:", mask[:, :5])  # Print first 5 columns of the mask
+
+        # output = captions_embed
+        # for layer in self.layers:
+        #     output = layer(output, features_embed, mask=mask)
+        #     print("After layer output shape:", output.shape)  # Should be (N, T, D)
+        #     print("Sample Output (first element of the batch):", output[0, 0, :5])
+
+        # scores = self.score_projection(output)
+        # print("Scores shape:", scores.shape)  # Should be (N, T, V)
+        # print("Sample Scores:", scores[0, 0, :5])  # Print first 5 score dims for the first token
+
+        # return scores
 
     def _init_weights(self, module):
         if isinstance(module, (nn.Linear, nn.Embedding)):

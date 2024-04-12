@@ -1,1 +1,3 @@
 transformer_captioning/datasets/coco_captioning
+transformer_captioning/plots
+__pycache__
