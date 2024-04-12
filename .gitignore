@@ -1,3 +1,5 @@
 transformer_captioning/datasets/coco_captioning
 transformer_captioning/plots
 __pycache__
+vit_classification/data
+vit_classification/checkpoints

@@ -54,7 +54,7 @@ class ViT(nn.Module):
         self.num_classes = num_classes
         self.device = device
 
-        self.patch_embedding = nn.Linear(patch_dim, d_model)  # TODO (Linear Layer that takes as input a patch and outputs a d_model dimensional vector)
+        self.patch_embedding = nn.Linear(patch_dim * patch_dim * 3, d_model)  # TODO (Linear Layer that takes as input a patch and outputs a d_model dimensional vector)
         self.positional_encoding = PositionalEncoding(d_model, max_len=num_patches + 1)  # TODO (use the positional encoding from the transformer captioning solution)
         self.fc = nn.Linear(d_model, num_classes)  # TODO (takes as input the embedding corresponding to the [CLS] token and outputs the logits for each class)
         self.cls_token = nn.Parameter(torch.randn(1, 1, d_model))  # TODO (learnable [CLS] token embedding)
@@ -85,27 +85,60 @@ class ViT(nn.Module):
 
     def forward(self, images):
         """
-            Given a batch of images, compute the logits for each class. 
+            Given a batch of images, compute the logits for each class.
             Inputs:
                 - images: a FloatTensor of shape (N, 3, H, W) giving a minibatch of images
             Returns:
                 - logits: a FloatTensor of shape (N, C) giving the logits for each class
         """
-        
-        patches = self.patchify(images)
-        patches_embedded = self.patch_embedding(patches)
-        
-        output = None # TODO (append a CLS token to the beginning of the sequence of patch embeddings)
 
-        output = self.positional_encoding(patches_embedded)
-        mask = torch.ones((self.num_patches, self.num_patches), device=self.device)
+        patches = self.patchify(images)  # (N, num_patches, patch_dim x patch_dim x 3)
+        patches_embedded = self.patch_embedding(patches)  # (N, num_patches, d_model)
+
+        output = torch.cat([self.cls_token.expand(patches_embedded.shape[0], -1, -1), patches_embedded], dim=1)  # TODO (append a CLS token to the beginning of the sequence of patch embeddings)
+
+        output = self.positional_encoding(output)  # (N, num_patches + 1, d_model)
+        mask = torch.ones((self.num_patches + 1, self.num_patches + 1), device=self.device)  # (num_patches, num_patches)
 
         for layer in self.layers:
-            output = layer(output, mask)
+            output = layer(output, mask)  # (N, num_patches + 1, d_model)
 
-        output = None # TODO (take the embedding corresponding to the [CLS] token and feed it through a linear layer to obtain the logits for each class)
+        output = self.fc(output[:, 0, :])  # TODO (take the embedding corresponding to the [CLS] token and feed it through a linear layer to obtain the logits for each class)
 
         return output
+        
+        # print(f"Input images shape: {images.shape}")  # Debugging statement
+
+        # patches = self.patchify(images)  # (N, num_patches, patch_dim*patch_dim*3)
+        # print(f"Patched images shape: {patches.shape}")  # Debugging statement
+
+        # patches_embedded = self.patch_embedding(patches)  # (N, num_patches, d_model)
+        # print(f"Embedded patches shape: {patches_embedded.shape}")  # Debugging statement
+
+        # cls_tokens = self.cls_token.expand(patches_embedded.shape[0], -1, -1)  # Expanding CLS token across the batch
+        # output = torch.cat([cls_tokens, patches_embedded], dim=1)  # Concatenating CLS token with patches
+        # print(f"Output shape after concatenating CLS tokens: {output.shape}")  # Debugging statement
+
+        # output = self.positional_encoding(output)  # (N, num_patches + 1, d_model)
+        # print(f"Output shape after positional encoding: {output.shape}")  # Debugging statement
+
+        # # Assuming full attention (no mask needed) or specify if needed
+        # mask = torch.ones((self.num_patches + 1, self.num_patches + 1), device=self.device)
+        # print(f"Mask shape: {mask.shape}")  # Debugging statement
+
+        # for layer in self.layers:
+        #     output = layer(output, mask) if mask is not None else layer(output)
+        #     print("Output shape after layer:", output.shape)  # Debugging statement
+
+        # # Taking the embedding corresponding to the [CLS] token
+        # cls_output = output[:, 0, :]  # Selecting the [CLS] token's embeddings (first token)
+        # print(f"CLS token output sample: {cls_output[0, :5]}")  # Debugging statement (first 5 features of the first item)
+
+        # logits = self.fc(cls_output)  # Using only the [CLS] token's embeddings to predict the class
+        # print(f"Logits shape: {logits.shape}")  # Debugging statement
+        # print(f"Logits sample: {logits[0, :]}")  # Debugging statement (logits of the first item)
+
+        # return logits
 
     def _init_weights(self, module):
         """
@@ -118,7 +151,3 @@ class ViT(nn.Module):
         elif isinstance(module, nn.LayerNorm):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
-
-
-
-
