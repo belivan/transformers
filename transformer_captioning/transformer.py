@@ -69,9 +69,9 @@ class MultiHeadAttentionLayer(AttentionLayer):
         #project query, key and value
         #after projection, split the embedding across num_heads
         #eg - expected shape for value is (N, H, T, D/H)
-        query = self.head_proj(query).view(N, S, H, D // H).transpose(1, 2)
-        key = self.head_proj(key).view(N, T, H, D // H).transpose(1, 2)
-        value = self.head_proj(value).view(N, T, H, D // H).transpose(1, 2)
+        query = self.query_proj(query).view(N, S, H, D // H).transpose(1, 2)
+        key = self.key_proj(key).view(N, T, H, D // H).transpose(1, 2)
+        value = self.value_proj(value).view(N, T, H, D // H).transpose(1, 2)
 
         #compute dot-product attention separately for each head. Don't forget the scaling value!
         #Expected shape of dot_product is (N, H, S, T)
@@ -88,7 +88,7 @@ class MultiHeadAttentionLayer(AttentionLayer):
         y = self.dropout(F.softmax(dot_product, dim=3)) @ value
 
         # concat embeddings from different heads, and project
-        output = y.transpose(1, 2).contiguous().view(N, S, D)
+        output = self.head_proj(y.transpose(1, 2).contiguous().view(N, S, D))
         return output
 
 
@@ -96,16 +96,16 @@ class PositionalEncoding(nn.Module):
     def __init__(self, embed_dim, dropout=0.1, max_len=5000):
         super().__init__()
         # TODO - use torch.nn.Embedding to create the encoding. Initialize dropout layer.
-        self.encoding = ... 
-        self.dropout = ...
+        self.encoding = nn.Embedding(max_len, embed_dim)
+        self.dropout = nn.Dropout(dropout)
       
     def forward(self, x):
         N, S, D = x.shape
         # TODO - add the encoding to x
 
-        output = x + ...
+        output = x + self.encoding.weight[:S].unsqueeze(0)
         output = self.dropout(output)
-   
+
         return output
 
 
@@ -114,13 +114,16 @@ class SelfAttentionBlock(nn.Module):
     def __init__(self, input_dim, num_heads, dropout=0.1):
         super().__init__()
         # TODO: Initialize the following. Use MultiHeadAttentionLayer for self_attn.
-        self.self_attn = ...
-        self.dropout = ...
-        self.layernorm = ...
-       
+        self.self_attn = MultiHeadAttentionLayer(input_dim, num_heads, dropout)
+        self.dropout = nn.Dropout(dropout)
+        self.layernorm = nn.LayerNorm(input_dim)
+
     def forward(self, seq, mask):
         ############# TODO - Self-attention on the sequence, using the mask. Add dropout to attention layer output.
         # Then add a residual connection to the original input, and finally apply normalization. #############################
+        x = self.self_attn(seq, seq, seq, mask)
+        x = self.dropout(x)
+        out = self.layernorm(seq + x)
         return out
 
 class CrossAttentionBlock(nn.Module):
@@ -128,13 +131,16 @@ class CrossAttentionBlock(nn.Module):
     def __init__(self, input_dim, num_heads, dropout=0.1):
         super().__init__()
         # TODO: Initialize the following. Use MultiHeadAttentionLayer for cross_attn.
-        self.cross_attn = ...
-        self.dropout = ...
-        self.norm = ...
-       
+        self.cross_attn = MultiHeadAttentionLayer(input_dim, num_heads, dropout)
+        self.dropout = nn.Dropout(dropout)
+        self.norm = nn.LayerNorm(input_dim)
+
     def forward(self, seq, cond):
         ############# TODO - Cross-attention on the sequence, using conditioning. Add dropout to attention layer output.
         # Then add a residual connection to the original input, and finally apply normalization. #############################
+        x = self.cross_attn(seq, cond, cond)
+        x = self.dropout(x)
+        out = self.norm(seq + x)
         return out
 
 class FeedForwardBlock(nn.Module):
@@ -142,14 +148,21 @@ class FeedForwardBlock(nn.Module):
         super().__init__()
         # TODO: Initialize the following. 
         # MLP has the following layers : linear, relu, dropout, linear ; hidden dim of linear is given by dim_feedforward
-        self.mlp = ...
-        self.dropout = ...
-        self.norm = ...
-       
+        self.mlp = nn.Sequential(
+            nn.Linear(input_dim, dim_feedforward),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(dim_feedforward, input_dim)
+        )
+        self.dropout = nn.Dropout(dropout)
+        self.norm = nn.LayerNorm(input_dim)
 
     def forward(self, seq):
-         ############# TODO - MLP on the sequence. Add dropout to mlp layer output.
+        ############# TODO - MLP on the sequence. Add dropout to mlp layer output.
         # Then add a residual connection to the original input, and finally apply normalization. #############################
+        x = self.mlp(seq)
+        x = self.dropout(x)
+        out = self.norm(seq + x)
         return out
 
 class DecoderLayer(nn.Module):
@@ -163,7 +176,7 @@ class DecoderLayer(nn.Module):
         out = self.self_atn_block(seq, mask)
         out = self.cross_atn_block(out, cond)
         return self.feedforward_block(out)
-       
+
 class TransformerDecoder(nn.Module):
     def __init__(self, word_to_idx, idx_to_word, input_dim, embed_dim, num_heads=4,
                  num_layers=2, max_length=50, device = 'cuda'):
@@ -184,9 +197,9 @@ class TransformerDecoder(nn.Module):
         self._null = word_to_idx["<NULL>"]
         self._start = word_to_idx.get("<START>", None)
         self.idx_to_word = idx_to_word
-        
+
         self.layers = nn.ModuleList([DecoderLayer(embed_dim, num_heads) for _ in range(num_layers)])
-        
+
         self.caption_embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=self._null)
         self.positional_encoding = PositionalEncoding(embed_dim, max_len=max_length)
         self.feature_embedding = nn.Linear(input_dim, embed_dim)
