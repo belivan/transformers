@@ -7,7 +7,7 @@ import torch
 class Trainer(object):
 
     def __init__(self, model, train_dataloader, val_dataloader, learning_rate = 0.001, num_epochs = 10, print_every = 10, verbose = True, device = 'cuda'):
-      
+
         self.model = model
         self.train_dataloader = train_dataloader
         self.val_dataloader = val_dataloader
@@ -23,9 +23,11 @@ class Trainer(object):
     def loss(self, predictions, labels):
         #TODO - Compute cross entropy loss between predictions and labels. 
         #Make sure to compute this loss only for indices where label is not the null token.
-        #The loss should be averaged over batch and sequence dimensions. 
+        #The loss should be averaged over batch and sequence dimensions.
+        loss = torch.nn.CrossEntropyLoss(ignore_index=0)(predictions.permute(0, 2, 1), labels)
+        loss = loss.mean()
         return loss
-    
+
     def val(self):
         """
         Run validation to compute loss and BLEU-4 score.
