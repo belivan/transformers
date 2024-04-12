@@ -56,7 +56,7 @@ class MultiHeadAttentionLayer(AttentionLayer):
         self.num_heads = num_heads
 
         # TODO: Initialize the following layers and parameters to perform attention
-        self.head_proj = ...
+        self.head_proj = nn.Linear(self.embed_dim, self.embed_dim)
 
     def forward(self, query, key, value, attn_mask=None):
         H = self.num_heads
@@ -69,26 +69,26 @@ class MultiHeadAttentionLayer(AttentionLayer):
         #project query, key and value
         #after projection, split the embedding across num_heads
         #eg - expected shape for value is (N, H, T, D/H)
-        query = ...
-        key = ...
-        value = ...
+        query = self.head_proj(query).view(N, S, H, D // H).transpose(1, 2)
+        key = self.head_proj(key).view(N, T, H, D // H).transpose(1, 2)
+        value = self.head_proj(value).view(N, T, H, D // H).transpose(1, 2)
 
         #compute dot-product attention separately for each head. Don't forget the scaling value!
         #Expected shape of dot_product is (N, H, S, T)
-        dot_product = ...
+        dot_product = torch.matmul(query, key.transpose(2, 3)) / math.sqrt(D // H)
 
         if attn_mask is not None:
             # convert att_mask which is multiplicative, to an additive mask
             # Hint : If mask[i,j] = 0, we want softmax(QKT[i,j] + additive_mask[i,j]) to be 0
             # Think about what inputs make softmax 0.
-            additive_mask = ...
+            additive_mask = attn_mask.unsqueeze(1).unsqueeze(0).expand(N, H, -1, -1) * -torch.inf
             dot_product += additive_mask
-        
+
         # apply softmax, dropout, and use value
-        y = ...
+        y = self.dropout(F.softmax(dot_product, dim=3)) @ value
 
         # concat embeddings from different heads, and project
-        output = ...
+        output = y.transpose(1, 2).contiguous().view(N, S, D)
         return output
 
 
